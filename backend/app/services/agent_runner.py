@@ -4,7 +4,9 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import AsyncGenerator
+import httpx
 from sqlmodel import Session
+from ..config import settings
 from ..database import engine
 from ..models import AgentRun, Card, CardStatus, ExecutorType, Project, RunStatus
 from .git_service import commit_and_create_pr, create_card_worktree, is_valid_git_repo, slugify
@@ -202,6 +204,41 @@ async def execute_agent_run(run_id: int, auto_create_pr: bool = True) -> None:
                 _emit(
                     run_id,
                     "Comando `claude` não encontrado no PATH; usando fallback Sandbox.",
+                    logs,
+                )
+                summary = await _run_sandbox(
+                    run_id, card_id, card_title, project_name, worktree_path, logs
+                )
+        elif run_executor == ExecutorType.GITHUB_ACTIONS:
+            if project_github_repo and settings.github_token:
+                _emit(run_id, f"Disparando GitHub Actions em {project_github_repo}...", logs)
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.post(
+                        f"https://api.github.com/repos/{project_github_repo}/dispatches",
+                        headers={
+                            "Authorization": f"Bearer {settings.github_token}",
+                            "Accept": "application/vnd.github+json",
+                        },
+                        json={
+                            "event_type": "antigravity-card",
+                            "client_payload": {
+                                "run_id": run_id,
+                                "card_id": card_id,
+                                "title": card_title,
+                                "prompt": run_prompt,
+                            },
+                        },
+                    )
+                if resp.status_code in (200, 204):
+                    summary = f"Workflow `antigravity-card` disparado em {project_github_repo}."
+                    _emit(run_id, summary, logs)
+                else:
+                    summary = f"Falha ao disparar GitHub Actions ({resp.status_code}): {resp.text}"
+                    _emit(run_id, summary, logs)
+            else:
+                _emit(
+                    run_id,
+                    "Configure `github_repo` no projeto e `GITHUB_TOKEN` no .env para GitHub Actions; usando Sandbox.",
                     logs,
                 )
                 summary = await _run_sandbox(

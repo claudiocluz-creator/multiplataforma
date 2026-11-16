@@ -65,7 +65,11 @@ export function CardModal({
     });
     setRuns((prev) => [run, ...prev]);
 
-    if (run.status === "completed" || run.status === "failed") {
+    if (
+      run.status === "completed" ||
+      run.status === "failed" ||
+      run.status === "queued"
+    ) {
       setLiveLogs(run.logs ? run.logs.split("\n") : []);
       setIsStreaming(false);
       onCardUpdated();
@@ -222,6 +226,8 @@ export function CardModal({
                 >
                   <option value="antigravity_sdk">Antigravity Python SDK</option>
                   <option value="claude_cli">Claude Code CLI</option>
+                  <option value="remote_worker">Worker Local (Casa/Trabalho)</option>
+                  <option value="github_actions">GitHub Actions (Nuvem)</option>
                   <option value="sandbox">Modo Sandbox</option>
                 </select>
 

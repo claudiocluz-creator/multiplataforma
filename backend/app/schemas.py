@@ -139,6 +139,14 @@ class RunTriggerRequest(BaseModel):
     auto_create_pr: bool = True
 
 
+class WorkerReportRequest(BaseModel):
+    status: RunStatus
+    branch_name: Optional[str] = None
+    pr_url: Optional[str] = None
+    diff_summary: str = ""
+    logs: str = ""
+
+
 class AgentRunRead(BaseModel):
     id: int
     card_id: int

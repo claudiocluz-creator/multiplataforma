@@ -102,6 +102,8 @@ export function ProjectsView({
             >
               <option value="antigravity_sdk">Antigravity Python SDK</option>
               <option value="claude_cli">Claude Code CLI</option>
+              <option value="remote_worker">Worker Local (Casa/Trabalho)</option>
+              <option value="github_actions">GitHub Actions (Nuvem)</option>
               <option value="sandbox">Modo Sandbox</option>
             </select>
             <input

@@ -11,6 +11,8 @@ def utcnow() -> datetime:
 class ExecutorType(str, Enum):
     ANTIGRAVITY_SDK = "antigravity_sdk"
     CLAUDE_CLI = "claude_cli"
+    REMOTE_WORKER = "remote_worker"
+    GITHUB_ACTIONS = "github_actions"
     SANDBOX = "sandbox"
 
 
@@ -40,6 +42,7 @@ class SourceChannel(str, Enum):
 
 class RunStatus(str, Enum):
     PENDING = "pending"
+    QUEUED = "queued"
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"

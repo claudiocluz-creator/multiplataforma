@@ -1,4 +1,9 @@
-export type ExecutorType = "antigravity_sdk" | "claude_cli" | "sandbox";
+export type ExecutorType =
+  | "antigravity_sdk"
+  | "claude_cli"
+  | "remote_worker"
+  | "github_actions"
+  | "sandbox";
 
 export type CardStatus =
   | "inbox"
@@ -12,7 +17,7 @@ export type Priority = "low" | "medium" | "high" | "urgent";
 
 export type SourceChannel = "manual" | "whatsapp" | "email" | "zendesk" | "basecamp";
 
-export type RunStatus = "pending" | "running" | "completed" | "failed";
+export type RunStatus = "pending" | "queued" | "running" | "completed" | "failed";
 
 export type RoutineFrequency = "daily" | "weekdays" | "weekly";
 

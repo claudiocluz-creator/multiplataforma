@@ -65,6 +65,13 @@ export function CardModal({
     });
     setRuns((prev) => [run, ...prev]);
 
+    if (run.status === "completed" || run.status === "failed") {
+      setLiveLogs(run.logs ? run.logs.split("\n") : []);
+      setIsStreaming(false);
+      onCardUpdated();
+      return;
+    }
+
     const es = new EventSource(api.streamUrl(run.id));
     es.onmessage = (e) => {
       setLiveLogs((prev) => [...prev, e.data]);

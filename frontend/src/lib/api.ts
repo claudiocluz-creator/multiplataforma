@@ -11,69 +11,110 @@ import {
   Routine,
   SourceChannel,
 } from "@/types";
+import { demoStore } from "./demoStore";
 
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...(options?.headers || {}) },
-    ...options,
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `Erro ${res.status}`);
+function shouldUseDemoImmediately(): boolean {
+  if (typeof window === "undefined") return false;
+  const isLocalHost =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1";
+  return !isLocalHost && !process.env.NEXT_PUBLIC_API_URL;
+}
+
+async function requestWithFallback<T>(
+  path: string,
+  fallback: () => T,
+  options?: RequestInit
+): Promise<T> {
+  if (shouldUseDemoImmediately()) {
+    return fallback();
   }
-  if (res.status === 204) return undefined as T;
-  return res.json();
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(options?.headers || {}),
+      },
+      ...options,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Erro ${res.status}`);
+    }
+    if (res.status === 204) return undefined as T;
+    return res.json();
+  } catch {
+    return fallback();
+  }
 }
 
 export const api = {
   // Projects
-  listProjects: () => request<Project[]>("/api/projects"),
+  listProjects: () =>
+    requestWithFallback<Project[]>("/api/projects", () =>
+      demoStore.listProjects()
+    ),
   createProject: (data: Partial<Project>) =>
-    request<Project>("/api/projects", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+    requestWithFallback<Project>(
+      "/api/projects",
+      () => demoStore.createProject(data),
+      { method: "POST", body: JSON.stringify(data) }
+    ),
   updateProject: (id: number, data: Partial<Project>) =>
-    request<Project>(`/api/projects/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    }),
+    requestWithFallback<Project>(
+      `/api/projects/${id}`,
+      () => demoStore.updateProject(id, data),
+      { method: "PATCH", body: JSON.stringify(data) }
+    ),
 
   // Cards
   listCards: (projectId?: number | null) =>
-    request<Card[]>(
-      projectId ? `/api/cards?project_id=${projectId}` : "/api/cards"
+    requestWithFallback<Card[]>(
+      projectId ? `/api/cards?project_id=${projectId}` : "/api/cards",
+      () => demoStore.listCards(projectId)
     ),
   createCard: (data: Partial<Card>) =>
-    request<Card>("/api/cards", {
+    requestWithFallback<Card>("/api/cards", () => demoStore.createCard(data), {
       method: "POST",
       body: JSON.stringify(data),
     }),
   updateCard: (id: number, data: Partial<Card>) =>
-    request<Card>(`/api/cards/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    }),
+    requestWithFallback<Card>(
+      `/api/cards/${id}`,
+      () => demoStore.updateCard(id, data),
+      { method: "PATCH", body: JSON.stringify(data) }
+    ),
   deleteCard: (id: number) =>
-    request<void>(`/api/cards/${id}`, { method: "DELETE" }),
+    requestWithFallback<void>(
+      `/api/cards/${id}`,
+      () => demoStore.deleteCard(id),
+      { method: "DELETE" }
+    ),
 
   // Custom Actions
   listActions: (projectId?: number | null) =>
-    request<CustomAction[]>(
-      projectId ? `/api/actions?project_id=${projectId}` : "/api/actions"
+    requestWithFallback<CustomAction[]>(
+      projectId ? `/api/actions?project_id=${projectId}` : "/api/actions",
+      () => demoStore.listActions(projectId)
     ),
   executeAction: (actionId: number, cardId: number, resolutionNote?: string) =>
-    request<Card>(`/api/actions/${actionId}/execute/${cardId}`, {
-      method: "POST",
-      body: JSON.stringify({ resolution_note: resolutionNote || null }),
-    }),
+    requestWithFallback<Card>(
+      `/api/actions/${actionId}/execute/${cardId}`,
+      () => demoStore.executeAction(actionId, cardId, resolutionNote),
+      {
+        method: "POST",
+        body: JSON.stringify({ resolution_note: resolutionNote || null }),
+      }
+    ),
 
   // AI Runs
   listCardRuns: (cardId: number) =>
-    request<AgentRun[]>(`/api/runs/card/${cardId}`),
+    requestWithFallback<AgentRun[]>(`/api/runs/card/${cardId}`, () =>
+      demoStore.listCardRuns(cardId)
+    ),
   triggerRun: (
     cardId: number,
     opts?: {
@@ -82,45 +123,70 @@ export const api = {
       auto_create_pr?: boolean;
     }
   ) =>
-    request<AgentRun>(`/api/runs/card/${cardId}`, {
-      method: "POST",
-      body: JSON.stringify(opts || {}),
-    }),
+    requestWithFallback<AgentRun>(
+      `/api/runs/card/${cardId}`,
+      () => demoStore.triggerRun(cardId),
+      { method: "POST", body: JSON.stringify(opts || {}) }
+    ),
   streamUrl: (runId: number) => `${API_BASE}/api/runs/${runId}/stream`,
 
   // Phase 2: Agenda & Routines
   getGoogleStatus: () =>
-    request<{ connected: boolean; oauth_ready: boolean; mode: string }>(
-      "/api/agenda/google/status"
+    requestWithFallback<{ connected: boolean; oauth_ready: boolean; mode: string }>(
+      "/api/agenda/google/status",
+      () => ({ connected: false, oauth_ready: false, mode: "cloud_demo" })
     ),
   syncGoogleCalendar: () =>
-    request<{ synced: number; message: string }>("/api/agenda/google/sync", {
-      method: "POST",
-    }),
-  listEvents: () => request<CalendarEvent[]>("/api/agenda/events"),
+    requestWithFallback<{ synced: number; message: string }>(
+      "/api/agenda/google/sync",
+      () => ({
+        synced: 0,
+        message: "Configure NEXT_PUBLIC_API_URL + GOOGLE_CALENDAR_TOKEN para sincronização real.",
+      }),
+      { method: "POST" }
+    ),
+  listEvents: () =>
+    requestWithFallback<CalendarEvent[]>("/api/agenda/events", () =>
+      demoStore.listEvents()
+    ),
   createEvent: (data: Partial<CalendarEvent>) =>
-    request<CalendarEvent>("/api/agenda/events", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+    requestWithFallback<CalendarEvent>(
+      "/api/agenda/events",
+      () => demoStore.createEvent(data),
+      { method: "POST", body: JSON.stringify(data) }
+    ),
   deleteEvent: (id: number) =>
-    request<void>(`/api/agenda/events/${id}`, { method: "DELETE" }),
-  listRoutines: () => request<Routine[]>("/api/agenda/routines"),
+    requestWithFallback<void>(
+      `/api/agenda/events/${id}`,
+      () => demoStore.deleteEvent(id),
+      { method: "DELETE" }
+    ),
+  listRoutines: () =>
+    requestWithFallback<Routine[]>("/api/agenda/routines", () =>
+      demoStore.listRoutines()
+    ),
   createRoutine: (data: Partial<Routine>) =>
-    request<Routine>("/api/agenda/routines", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+    requestWithFallback<Routine>(
+      "/api/agenda/routines",
+      () => demoStore.createRoutine(data),
+      { method: "POST", body: JSON.stringify(data) }
+    ),
   toggleRoutine: (id: number) =>
-    request<Routine>(`/api/agenda/routines/${id}/toggle`, {
-      method: "POST",
-    }),
-  getReminders: () => request<RemindersSummary>("/api/agenda/reminders"),
+    requestWithFallback<Routine>(
+      `/api/agenda/routines/${id}/toggle`,
+      () => demoStore.toggleRoutine(id),
+      { method: "POST" }
+    ),
+  getReminders: () =>
+    requestWithFallback<RemindersSummary>("/api/agenda/reminders", () =>
+      demoStore.getReminders()
+    ),
 
   // Phase 3: Multichannel Intake
   listMessages: (cardId?: number) =>
-    request<ChannelMessage[]>(
-      cardId ? `/api/intake/messages?card_id=${cardId}` : "/api/intake/messages"
+    requestWithFallback<ChannelMessage[]>(
+      cardId ? `/api/intake/messages?card_id=${cardId}` : "/api/intake/messages",
+      () => demoStore.listMessages(cardId)
     ),
   simulateInbound: (data: {
     channel: SourceChannel;
@@ -129,18 +195,26 @@ export const api = {
     external_thread_id?: string;
     raw_content: string;
   }) =>
-    request<{ message: ChannelMessage; card: Card }>("/api/intake/simulate", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+    requestWithFallback<{ message: ChannelMessage; card: Card }>(
+      "/api/intake/simulate",
+      () => demoStore.simulateInbound(data),
+      { method: "POST", body: JSON.stringify(data) }
+    ),
   replyBidirectional: (cardId: number, message: string, markDone = true) =>
-    request<ChannelMessage>(`/api/intake/reply/${cardId}`, {
-      method: "POST",
-      body: JSON.stringify({ message, mark_done: markDone }),
-    }),
+    requestWithFallback<ChannelMessage>(
+      `/api/intake/reply/${cardId}`,
+      () => demoStore.replyBidirectional(cardId, message, markDone),
+      {
+        method: "POST",
+        body: JSON.stringify({ message, mark_done: markDone }),
+      }
+    ),
 
   // Phase 4: Satellite Content Pipeline (IG -> YT)
-  listContent: () => request<ContentItem[]>("/api/content"),
+  listContent: () =>
+    requestWithFallback<ContentItem[]>("/api/content", () =>
+      demoStore.listContent()
+    ),
   captureContent: (data: {
     source_url?: string;
     media_path?: string;
@@ -149,12 +223,15 @@ export const api = {
     niche?: string;
     create_kanban_card?: boolean;
   }) =>
-    request<ContentItem>("/api/content/capture", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+    requestWithFallback<ContentItem>(
+      "/api/content/capture",
+      () => demoStore.captureContent(data),
+      { method: "POST", body: JSON.stringify(data) }
+    ),
   approvePublishContent: (id: number) =>
-    request<ContentItem>(`/api/content/${id}/approve-publish`, {
-      method: "POST",
-    }),
+    requestWithFallback<ContentItem>(
+      `/api/content/${id}/approve-publish`,
+      () => demoStore.approvePublishContent(id),
+      { method: "POST" }
+    ),
 };

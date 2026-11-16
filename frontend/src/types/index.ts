@@ -120,6 +120,35 @@ export interface RemindersSummary {
   upcoming_events_count: number;
 }
 
+export interface DependencyConflict {
+  card_id: number;
+  card_title: string;
+  card_due: string | null;
+  depends_on_id: number;
+  depends_on_title: string;
+  parent_due: string | null;
+  reason: string;
+}
+
+export interface SuggestedTimeboxBlock {
+  card_id: number;
+  card_title: string;
+  priority: Priority;
+  due_date: string | null;
+  start_at: string;
+  end_at: string;
+  title: string;
+}
+
+export interface SmartPlan {
+  date: string;
+  conflicts: DependencyConflict[];
+  suggested_blocks: SuggestedTimeboxBlock[];
+  day_events_count: number;
+  pending_routines_count: number;
+  summary_text: string;
+}
+
 export interface ChannelMessage {
   id: number;
   channel: SourceChannel;

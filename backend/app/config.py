@@ -28,6 +28,15 @@ class Settings(BaseSettings):
     youtube_api_key: str = ""
     instagram_access_token: str = ""
 
+    # Onda 1 & 2: Auth & Daily Digest
+    admin_password: str = ""
+    jwt_secret: str = "change-me-in-production"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    digest_email_to: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property

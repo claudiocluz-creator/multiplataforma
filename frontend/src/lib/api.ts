@@ -9,7 +9,9 @@ import {
   Project,
   RemindersSummary,
   Routine,
+  SmartPlan,
   SourceChannel,
+  SuggestedTimeboxBlock,
 } from "@/types";
 import { demoStore } from "./demoStore";
 
@@ -180,6 +182,35 @@ export const api = {
   getReminders: () =>
     requestWithFallback<RemindersSummary>("/api/agenda/reminders", () =>
       demoStore.getReminders()
+    ),
+  getSmartPlan: (targetDate?: string) =>
+    requestWithFallback<SmartPlan>(
+      targetDate
+        ? `/api/agenda/smart-plan?target_date=${targetDate}`
+        : "/api/agenda/smart-plan",
+      () => demoStore.getSmartPlan()
+    ),
+  applySmartPlan: (blocks: SuggestedTimeboxBlock[]) =>
+    requestWithFallback<CalendarEvent[]>(
+      "/api/agenda/smart-plan/apply",
+      () => demoStore.applySmartPlan(blocks),
+      { method: "POST", body: JSON.stringify({ blocks }) }
+    ),
+  sendDailyDigest: (channel: "preview" | "whatsapp" | "email") =>
+    requestWithFallback<{
+      sent: boolean;
+      channel: string;
+      detail: string;
+      summary_text: string;
+    }>(
+      `/api/agenda/daily-digest/send?channel=${channel}`,
+      () => ({
+        sent: false,
+        channel,
+        detail: "Prévia gerada no navegador (configure o backend + SMTP/WhatsApp para envio real).",
+        summary_text: demoStore.getSmartPlan().summary_text,
+      }),
+      { method: "POST" }
     ),
 
   // Phase 3: Multichannel Intake

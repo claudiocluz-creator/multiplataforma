@@ -2,13 +2,17 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  AlertTriangle,
   Bell,
   Calendar,
   CheckCircle2,
   Circle,
   Clock,
+  Mail,
+  MessageSquare,
   Plus,
   RefreshCw,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -18,6 +22,7 @@ import {
   RemindersSummary,
   Routine,
   RoutineFrequency,
+  SmartPlan,
 } from "@/types";
 
 interface AgendaViewProps {
@@ -34,6 +39,8 @@ export function AgendaView({
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [reminders, setReminders] = useState<RemindersSummary | null>(null);
+  const [smartPlan, setSmartPlan] = useState<SmartPlan | null>(null);
+  const [digestFeedback, setDigestFeedback] = useState("");
   const [googleMode, setGoogleMode] = useState<{
     connected: boolean;
     mode: string;
@@ -62,16 +69,18 @@ export function AgendaView({
   const [rtFreq, setRtFreq] = useState<RoutineFrequency>("daily");
 
   const loadData = useCallback(async () => {
-    const [evList, rtList, rem, gStatus] = await Promise.all([
+    const [evList, rtList, rem, gStatus, plan] = await Promise.all([
       api.listEvents(),
       api.listRoutines(),
       api.getReminders(),
       api.getGoogleStatus(),
+      api.getSmartPlan(),
     ]);
     setEvents(evList);
     setRoutines(rtList);
     setReminders(rem);
     setGoogleMode(gStatus);
+    setSmartPlan(plan);
   }, []);
 
   useEffect(() => {
@@ -146,6 +155,116 @@ export function AgendaView({
               <div className="text-xs text-slate-400">Checklist diário</div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Smart Agenda: Auto-Timeboxing + Dependency Conflicts + Daily Digest */}
+      {smartPlan && (
+        <div className="space-y-4 rounded-xl border border-indigo-500/30 bg-indigo-950/15 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="flex items-center gap-2 text-base font-semibold text-white">
+                <Sparkles className="h-4 w-4 text-indigo-400" />
+                Agenda Inteligente — Plano do Dia ({smartPlan.date})
+              </h2>
+              <p className="text-xs text-slate-400">
+                Cruza cards do Kanban, prazos/dependências do Gantt e horários
+                livres da Google Agenda.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={async () => {
+                  const res = await api.sendDailyDigest("whatsapp");
+                  setDigestFeedback(res.detail);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-950/50"
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+                Resumo WhatsApp
+              </button>
+              <button
+                onClick={async () => {
+                  const res = await api.sendDailyDigest("email");
+                  setDigestFeedback(res.detail);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-950/30 px-3 py-1.5 text-xs font-medium text-sky-300 hover:bg-sky-950/50"
+              >
+                <Mail className="h-3.5 w-3.5" />
+                Resumo E-mail
+              </button>
+              {smartPlan.suggested_blocks.length > 0 && (
+                <button
+                  onClick={async () => {
+                    await api.applySmartPlan(smartPlan.suggested_blocks);
+                    await loadData();
+                    onRefreshReminders();
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Aplicar Timeboxing ({smartPlan.suggested_blocks.length})
+                </button>
+              )}
+            </div>
+          </div>
+
+          {digestFeedback && (
+            <div className="rounded-lg bg-slate-950 px-3 py-2 text-xs text-sky-300">
+              {digestFeedback}
+            </div>
+          )}
+
+          {smartPlan.conflicts.length > 0 && (
+            <div className="space-y-1.5 rounded-xl border border-rose-500/40 bg-rose-950/25 p-3">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-rose-300">
+                <AlertTriangle className="h-4 w-4" />
+                Prazos Inviáveis por Dependências ({smartPlan.conflicts.length})
+              </div>
+              {smartPlan.conflicts.map((c) => (
+                <div key={c.card_id} className="text-xs text-rose-200">
+                  • {c.reason}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {smartPlan.suggested_blocks.length > 0 ? (
+            <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+              {smartPlan.suggested_blocks.map((b) => (
+                <div
+                  key={`${b.card_id}-${b.start_at}`}
+                  className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-xs"
+                >
+                  <div className="min-w-0 pr-2">
+                    <div className="truncate font-medium text-white">
+                      {b.title}
+                    </div>
+                    <div className="text-slate-400">
+                      {b.start_at.slice(11, 16)} → {b.end_at.slice(11, 16)} ·{" "}
+                      <span className="uppercase">{b.priority}</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      await api.applySmartPlan([b]);
+                      await loadData();
+                      onRefreshReminders();
+                    }}
+                    className="shrink-0 rounded bg-indigo-600/20 px-2 py-1 text-[11px] font-medium text-indigo-300 hover:bg-indigo-600/40"
+                  >
+                    Agendar
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs text-slate-400">
+              Todas as demandas ativas já possuem blocos agendados para hoje ou
+              não há horários livres entre 09h e 18h.
+            </div>
+          )}
         </div>
       )}
 

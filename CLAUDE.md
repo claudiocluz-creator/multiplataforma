@@ -111,3 +111,4 @@ npm run build
   1. Finalizar o ajuste na Vercel (`Root Directory = frontend` + `Framework Preset = Next.js` + Redeploy).
   2. Hospedar `backend/` no Railway ou Render e configurar `NEXT_PUBLIC_API_URL` na Vercel + `CORS_ORIGINS` no backend.
   3. Conectar credenciais reais no `.env` conforme necessidade (GitHub, Google Calendar OAuth, Zendesk, WhatsApp Webhook, YouTube/Instagram) e cadastrar os repositórios reais na aba **Projetos**.
+

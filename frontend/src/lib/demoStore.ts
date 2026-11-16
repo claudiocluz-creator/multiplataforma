@@ -504,6 +504,89 @@ export const demoStore = {
     };
   },
 
+  getSmartPlan: () => {
+    const s = loadState();
+    const today = isoDateOffset(0);
+    const dayEvents = s.events.filter((e) => e.start_at.startsWith(today));
+    const scheduledIds = new Set(dayEvents.map((e) => e.card_id).filter(Boolean));
+    const candidates = s.cards.filter(
+      (c) => c.status !== "done" && !scheduledIds.has(c.id)
+    );
+    const freeHours = [9, 10, 11, 15, 16, 17];
+    const suggested_blocks = candidates.slice(0, freeHours.length).map((c, idx) => {
+      const h = freeHours[idx];
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return {
+        card_id: c.id,
+        card_title: c.title,
+        priority: c.priority,
+        due_date: c.due_date,
+        start_at: `${today}T${pad(h)}:00`,
+        end_at: `${today}T${pad(h + 1)}:00`,
+        title: `Foco: #${c.id} ${c.title}`,
+      };
+    });
+    const conflicts = s.cards
+      .filter((c) => c.status !== "done" && c.depends_on_id)
+      .flatMap((c) => {
+        const parent = s.cards.find((p) => p.id === c.depends_on_id);
+        if (!parent || parent.status === "done") return [];
+        if (c.due_date && parent.due_date && parent.due_date >= c.due_date) {
+          return [
+            {
+              card_id: c.id,
+              card_title: c.title,
+              card_due: c.due_date,
+              depends_on_id: parent.id,
+              depends_on_title: parent.title,
+              parent_due: parent.due_date,
+              reason: `Card #${c.id} vence em ${c.due_date}, mas depende do Card #${parent.id} (${parent.due_date}).`,
+            },
+          ];
+        }
+        return [];
+      });
+    const summary_text = [
+      `📅 Plano do Dia (${today})`,
+      `• Compromissos hoje: ${dayEvents.length}`,
+      `• Conflitos de dependência: ${conflicts.length}`,
+      ...suggested_blocks
+        .slice(0, 4)
+        .map((b) => `- ${b.start_at.slice(11, 16)}–${b.end_at.slice(11, 16)}: ${b.title}`),
+    ].join("\n");
+    return {
+      date: today,
+      conflicts,
+      suggested_blocks,
+      day_events_count: dayEvents.length,
+      pending_routines_count: s.routines.filter(
+        (r) => r.active && r.last_completed_date !== today
+      ).length,
+      summary_text,
+    };
+  },
+  applySmartPlan: (
+    blocks: { card_id: number; title: string; start_at: string; end_at: string }[]
+  ): CalendarEvent[] => {
+    const s = loadState();
+    const created = blocks.map((b) => {
+      const ev: CalendarEvent = {
+        id: ++s.nextId,
+        title: b.title,
+        description: "Bloco de foco sugerido pela Agenda Inteligente.",
+        start_at: b.start_at,
+        end_at: b.end_at,
+        source: "local",
+        google_event_id: null,
+        card_id: b.card_id,
+      };
+      s.events.push(ev);
+      return ev;
+    });
+    saveState(s);
+    return created;
+  },
+
   listMessages: (cardId?: number): ChannelMessage[] => {
     const msgs = loadState().messages;
     return cardId ? msgs.filter((m) => m.card_id === cardId) : msgs;

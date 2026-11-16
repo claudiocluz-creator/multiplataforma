@@ -1,6 +1,9 @@
 from datetime import date, datetime, timedelta
+from email.message import EmailMessage
+import smtplib
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlmodel import Session, select
 from ..config import settings
 from ..database import get_session
@@ -11,6 +14,7 @@ from ..schemas import (
     RoutineCreate,
     RoutineRead,
 )
+from ..services.smart_agenda import generate_smart_plan
 
 router = APIRouter(prefix="/api/agenda", tags=["agenda"])
 
@@ -173,4 +177,88 @@ def get_reminders(session: Session = Depends(get_session)):
         "pending_routines_count": len(pending_routines),
         "upcoming_events_count": len(upcoming_events),
     }
+
+
+class TimeboxBlockInput(BaseModel):
+    card_id: int
+    title: str
+    start_at: str
+    end_at: str
+
+
+class SmartPlanApplyRequest(BaseModel):
+    blocks: list[TimeboxBlockInput]
+
+
+@router.get("/smart-plan")
+def get_smart_plan(target_date: str | None = None, session: Session = Depends(get_session)):
+    """Generate automatic timeboxing suggestions and detect dependency deadline conflicts."""
+    return generate_smart_plan(session, target_date)
+
+
+@router.post("/smart-plan/apply", response_model=list[CalendarEventRead])
+def apply_smart_plan(
+    payload: SmartPlanApplyRequest,
+    session: Session = Depends(get_session),
+):
+    """Apply suggested timeboxing blocks onto the calendar in one click."""
+    created: list[CalendarEvent] = []
+    for block in payload.blocks:
+        ev = CalendarEvent(
+            title=block.title,
+            description="Bloco de foco sugerido pela Agenda Inteligente.",
+            start_at=block.start_at,
+            end_at=block.end_at,
+            source="local",
+            card_id=block.card_id,
+        )
+        session.add(ev)
+        created.append(ev)
+    session.commit()
+    for ev in created:
+        session.refresh(ev)
+    return created
+
+
+@router.post("/daily-digest/send")
+async def send_daily_digest(
+    channel: str = "preview",
+    session: Session = Depends(get_session),
+):
+    """Send the generated daily plan via WhatsApp webhook or SMTP email if configured."""
+    plan = generate_smart_plan(session)
+    summary = plan["summary_text"]
+    sent = False
+    detail = "Resumo gerado (configure WHATSAPP_WEBHOOK_URL ou SMTP no .env para envio real)."
+
+    if channel == "whatsapp" and settings.whatsapp_webhook_url:
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                resp = await client.post(
+                    settings.whatsapp_webhook_url,
+                    json={"type": "daily_digest", "message": summary},
+                )
+                sent = resp.status_code < 300
+                detail = "Resumo enviado via WhatsApp!" if sent else f"Erro WhatsApp ({resp.status_code})"
+        except httpx.HTTPError as exc:
+            detail = f"Erro WhatsApp: {exc}"
+
+    elif channel == "email" and settings.smtp_host and settings.digest_email_to:
+        try:
+            msg = EmailMessage()
+            msg["Subject"] = f"Plano do Dia ({plan['date']}) — Antigravity Command Center"
+            msg["From"] = settings.smtp_user or "noreply@commandcenter.local"
+            msg["To"] = settings.digest_email_to
+            msg.set_content(summary)
+            with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as server:
+                server.starttls()
+                if settings.smtp_user and settings.smtp_password:
+                    server.login(settings.smtp_user, settings.smtp_password)
+                server.send_message(msg)
+            sent = True
+            detail = f"Resumo enviado por e-mail para {settings.digest_email_to}!"
+        except Exception as exc:
+            detail = f"Erro SMTP: {exc}"
+
+    return {"sent": sent, "channel": channel, "detail": detail, "summary_text": summary}
 
